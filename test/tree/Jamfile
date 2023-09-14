@@ -1,0 +1,25 @@
+# Copyright 2023 Thomas Brown
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# http://www.boost.org/LICENSE_1_0.txt)
+
+# This example assumes that the .fbs files are defined in a
+# directory tree.
+
+import testing ;
+
+import flatc ;
+
+exe program
+  : # sources
+    main.cpp
+
+    company_a/flatbuffers/example/a0.fbs
+    company_a/flatbuffers/example/a1.fbs
+
+    flatbuffers
+  ;
+
+run program : : : : run-program ;
+
+lib flatbuffers ;

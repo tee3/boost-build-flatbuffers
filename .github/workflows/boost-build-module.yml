@@ -1,0 +1,29 @@
+name: Boost.Build FlatBuffers
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install libboost-tools-dev asciidoctor
+          sudo apt-get -y install asciidoctor
+          sudo apt-get -y install flatbuffers-compiler libflatbuffers-dev
+
+      - name: Documentation
+        run: b2
+
+      - name: Test
+        run: cd test && BOOST_BUILD_PATH="$(pwd)"/.. b2 --verbose-test
