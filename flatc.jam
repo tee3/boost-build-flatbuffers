@@ -1,0 +1,250 @@
+# Copyright 2023 Thomas Brown
+# Distributed under the Boost Software License, Version 1.0. (See
+# accompanying file LICENSE_1_0.txt or copy at
+# http://www.boost.org/LICENSE_1_0.txt)
+
+#| tag::doc[]
+
+:toc:
+
+= Boost.Build module for FlatBuffers
+
+== Overview
+
+This module uses the FlatBuffers `flatc` program automatically
+generate the C++ files from `.fbs` files.
+
+== Configuration
+
+[source, jam]
+----
+import flatc ;
+----
+
+The `flatc` tool must be configured as any other Boost.Build tool.  The
+tool will automatically detect the location and version of the tool.
+
+[source, jam]
+----
+using flatc ;
+----
+
+The desired version can be specified.
+
+[source, jam]
+----
+using flatc : 1.11.0 ;
+----
+
+The location can also be specified both with and without a desired
+version.
+
+[source, jam]
+----
+using flatc : : /path/to/flatc ;
+----
+
+Note that running with the `--debug-configuration` option to
+Boost.Build will print the `flatc` location and version.
+
+== `.fbs` files
+
+This project adds a new type for `.fbs` files.
+
+[source, jam]
+----
+exe example
+  : # sources
+    main.cpp
+
+    a.fbs
+    b.fbs
+  ;
+----
+
+== Properties
+
+`<flatcflags>`::
+
+This property allows the user to pass any flags into the `flatc`.
+
+`<cxxstd>`::
+
+This property is honored and warnings in the FlatBuffers `.fbs` files
+will use features up to the standard as provided by this property.
+
+`<include>`::
+
+This property is honored and will add directories to the search path
+for FlatBuffers `.fbs` files.
+
+`<warnings>`::
+
+This property is honored and warnings in the FlatBuffers `.fbs` files
+will enabled when this is set to `on` and not when set to `off`.
+
+`<warnings-as-errors>`::
+
+This property is honored and warnings in the FlatBuffers `.fbs` files
+will result in an error when set to `on`.
+
+== Examples
+
+=== Simple
+
+This is the simplest possible example and works as expected.
+
+[source, jam]
+----
+# Jamfile
+
+import flatc ;
+
+exe program
+  : # sources
+    program.cpp
+
+    a.fbs
+    b.fbs
+
+    flatbuffers
+  ;
+
+lib flatbuffers ;
+----
+
+=== Using a library
+
+This example builds the protocol into a separate library that can be
+reused.
+
+It also shows the use of `<implicit-dependency>` as required with
+generated headers.
+
+[source, jam]
+----
+# Jamfile
+
+import flatc ;
+
+lib example
+  : # sources
+    a.fbs
+    b.fbs
+
+    flatbuffers
+  ;
+
+exe program
+  : # sources
+    program.cpp
+
+    example
+  : # requirements
+    <implicit-dependency>example
+  ;
+
+lib flatbuffers ;
+----
+
+|# # end::doc[]
+
+import common ;
+import errors ;
+import feature ;
+import "class" ;
+import generators ;
+import regex ;
+import scanner ;
+import toolset ;
+import type ;
+import version ;
+
+feature.feature flatcflags : : free link-incompatible ;
+
+type.register FBS : fbs ;
+
+if [ MATCH (--debug-configuration) : [ modules.peek : ARGV ] ]
+{
+  .debug-configuration = true ;
+}
+
+rule init ( version ? : command * : options * )
+{
+  local possible-paths ;
+
+  command = [ common.get-invocation-command flatc : flatc : $(command) ] ;
+
+  if $(command)
+  {
+    local output-lines = [ SPLIT_BY_CHARACTERS [ SHELL "$(command) --version" ] : "\n" ] ;
+    local detected-version-components = [ MATCH "flatc version ([0-9]+(\\.[0-9]+)?)" : $(output-lines) ] ;
+    local detected-version = $(detected-version-components[1]) ;
+
+    if ! $(detected-version)
+    {
+      errors.user-error "flatc: no version detected" ;
+    }
+
+    if $(version)
+    {
+      if $(detected-version) != $(version)
+      {
+        errors.user-error "flatc: detected version (" $(detected-version) ") does not match desired (" $(version) ")" ;
+      }
+    }
+
+    if $(detected-version)
+    {
+      version = $(detected-version) ;
+    }
+  }
+  else
+  {
+    errors.user-error "flatc: flatc not found at" $(command) ;
+  }
+
+  if $(.debug-configuration)
+  {
+    ECHO "flatc: using flatc" $(version) "at" $(command) ;
+  }
+
+  toolset.flags flatc .flatc $(condition) : $(command) ;
+}
+
+# A scanner for .fbs files
+class fbs-scanner : common-scanner
+{
+  rule pattern ( )
+  {
+    return "^[  ]*include[       ]*\"([^\"]*)\";" ;
+  }
+}
+
+scanner.register fbs-scanner : include ;
+type.set-scanner FBS : fbs-scanner ;
+generators.register-standard flatc.flatc : FBS : H(_generated) ;
+
+toolset.flags flatc.flatc INCLUDES : <include> ;
+
+toolset.flags flatc.flatc OPTIONS <warnings>on : ;
+toolset.flags flatc.flatc OPTIONS <warnings>off : --no-warnings ;
+
+toolset.flags flatc.flatc OPTIONS <warnings-as-errors>off : ;
+toolset.flags flatc.flatc OPTIONS <warnings-as-errors>on : --warnings-as-errors ;
+
+toolset.flags flatc.flatc OPTIONS <cxxstd>98 : --cpp-std c++0x ;
+toolset.flags flatc.flatc OPTIONS <cxxstd>11 : --cpp-std c++11 ;
+toolset.flags flatc.flatc OPTIONS <cxxstd>14 : --cpp-std c++11 ;
+toolset.flags flatc.flatc OPTIONS <cxxstd>17 : --cpp-std c++11 ;
+toolset.flags flatc.flatc OPTIONS <cxxstd>17 : --cpp-std c++17 ;
+# @todo only in later versions of b2, need to deal with
+# toolset.flags flatc.flatc OPTIONS <cxxstd>20 : --cpp-std c++17 ;
+# toolset.flags flatc.flatc OPTIONS <cxxstd>23 : --cpp-std c++17 ;
+
+toolset.flags flatc.flatc OPTIONS <flatcflags> ;
+
+actions flatc
+{
+  flatc --cpp $(OPTIONS) -I "$(INCLUDES)" -I "$(>:D)" -o "$(<[1]:D)" "$(>[1])"
+}
